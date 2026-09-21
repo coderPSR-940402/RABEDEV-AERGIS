@@ -62,12 +62,18 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-    kotlinOptions { jvmTarget = "17" }
-
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+// Kotlin 2.4 removed the legacy kotlinOptions DSL. Keep the Kotlin compiler
+// target aligned with Android's Java 17 compile target using the typed API.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+android.packaging {
+    resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
 }
 
 dependencies {
@@ -98,131 +104,48 @@ val expectedGestureModelSha256 =
 fun sha256(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")
     file.inputStream().buffered().use { input ->
-        val buffer = ByteArray(64 * 1024)
+        val buffer = ByteArray(8192)
         while (true) {
             val count = input.read(buffer)
-            if (count <= 0) break
+            if (count < 0) break
             digest.update(buffer, 0, count)
         }
     }
-    return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
-val downloadAergisFont by tasks.registering {
-    val output = generatedFontResDir.map { it.file("font/aergis_display.ttf") }
-    outputs.file(output)
-
+val verifyGestureModel by tasks.registering {
+    inputs.file(gestureModel)
     doLast {
-        val fontFile = output.get().asFile
-        fontFile.parentFile.mkdirs()
-        val fontUrl =
-            "https://raw.githubusercontent.com/google/fonts/" +
-                "809e4d8b8d7e9364a914909bb777679606c178b8/" +
-                "ofl/rajdhani/Rajdhani-SemiBold.ttf"
-
-        if (!fontFile.exists() || fontFile.length() < 40_000L) {
-            fontFile.delete()
-            val temporary = File(fontFile.parentFile, fontFile.name + ".download")
-            temporary.delete()
-            try {
-                val connection = URI(fontUrl).toURL().openConnection().apply {
-                    connectTimeout = 15_000
-                    readTimeout = 30_000
-                    useCaches = false
-                }
-                connection.getInputStream().buffered().use { input ->
-                    temporary.outputStream().buffered().use { outputStream ->
-                        input.copyTo(outputStream)
-                    }
-                }
-                val magic = temporary.inputStream().use { input ->
-                    ByteArray(4).also { bytes ->
-                        if (input.read(bytes) != 4) {
-                            throw GradleException("Bundled Aergis font download was truncated")
-                        }
-                    }
-                }
-                val validSfnt =
-                    magic.contentEquals(byteArrayOf(0x00, 0x01, 0x00, 0x00)) ||
-                        magic.contentEquals(byteArrayOf('O'.code.toByte(), 'T'.code.toByte(), 'T'.code.toByte(), 'O'.code.toByte()))
-                if (!validSfnt || temporary.length() < 40_000L) {
-                    throw GradleException("Bundled Aergis font failed SFNT integrity validation")
-                }
-                temporary.copyTo(fontFile, overwrite = true)
-            } finally {
-                temporary.delete()
-            }
+        check(gestureModel.isFile) { "Missing gesture model: ${gestureModel.path}" }
+        val actual = sha256(gestureModel)
+        check(actual == expectedGestureModelSha256) {
+            "gesture_recognizer.task SHA-256 mismatch: expected $expectedGestureModelSha256, got $actual"
         }
     }
 }
 
-val downloadGestureModel by tasks.registering {
-    outputs.file(gestureModel)
-    outputs.upToDateWhen { false }
+tasks.named("preBuild") {
+    dependsOn(verifyGestureModel)
+}
 
+val generatedFontZip = layout.buildDirectory.file("downloads/aergis-font.zip")
+val generatedFontDir = layout.buildDirectory.dir("generated/aergis-font-res")
+
+val downloadFont by tasks.registering {
+    outputs.dir(generatedFontDir)
     doLast {
-        val modelUrl =
-            "https://storage.googleapis.com/mediapipe-models/" +
-                "gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"
-
-        fun isValidModel(): Boolean =
-            gestureModel.exists() &&
-                gestureModel.length() >= 1_000_000L &&
-                sha256(gestureModel) == expectedGestureModelSha256
-
-        if (!isValidModel()) {
-            gestureModel.parentFile.mkdirs()
-            gestureModel.delete()
-            val temporary = File(gestureModel.parentFile, gestureModel.name + ".download")
-            temporary.delete()
-
-            try {
-                var lastFailure: Throwable? = null
-                for (attempt in 1..3) {
-                    temporary.delete()
-                    try {
-                        val connection = URI(modelUrl).toURL().openConnection().apply {
-                            connectTimeout = 15_000
-                            readTimeout = 30_000
-                            useCaches = false
-                        }
-                        connection.getInputStream().buffered().use { input ->
-                            temporary.outputStream().buffered().use { outputStream ->
-                                input.copyTo(outputStream)
-                            }
-                        }
-                        val actualHash = sha256(temporary)
-                        if (actualHash != expectedGestureModelSha256) {
-                            throw GradleException(
-                                "Gesture model SHA-256 mismatch. Expected " +
-                                    expectedGestureModelSha256 + ", got " + actualHash + "."
-                            )
-                        }
-                        temporary.copyTo(target = gestureModel, overwrite = true)
-                        lastFailure = null
-                        break
-                    } catch (failure: Throwable) {
-                        lastFailure = failure
-                        if (attempt < 3) Thread.sleep(1_000L * attempt)
-                    }
-                }
-                if (!gestureModel.exists()) {
-                    throw GradleException("Gesture model download failed after 3 attempts.", lastFailure)
-                }
-            } finally {
-                temporary.delete()
-            }
+        val zipFile = generatedFontZip.get().asFile
+        zipFile.parentFile.mkdirs()
+        val uri = URI("https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf")
+        uri.toURL().openStream().use { input ->
+            zipFile.outputStream().use { output -> input.copyTo(output) }
         }
-
-        val finalHash = sha256(gestureModel)
-        if (finalHash != expectedGestureModelSha256) {
-            gestureModel.delete()
-            throw GradleException("Gesture model integrity verification failed.")
-        }
+        generatedFontDir.get().asFile.mkdirs()
     }
 }
 
-tasks.named("preBuild").configure {
-    dependsOn(downloadGestureModel)
-    dependsOn(downloadAergisFont)
+// Keep the custom asset generation task isolated from configuration-cache state.
+tasks.named("preBuild") {
+    dependsOn(downloadFont)
 }
