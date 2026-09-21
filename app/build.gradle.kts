@@ -23,7 +23,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    sourceSets.getByName("main").res.srcDir(generatedFontResDir)
+    sourceSets.getByName("main").res.srcDir(generatedFontResDir.get().asFile)
 
     // Debug builds use Android's ephemeral debug keystore. A preview/release
     // keystore must never be required from, or embedded in, source control.
@@ -41,7 +41,6 @@ android {
 
     buildTypes {
         getByName("debug") {
-            // Deliberately use the Android debug key instead of a repository key.
             isDebuggable = true
         }
 
