@@ -22,11 +22,15 @@ edit it in place as you make real progress, don't append a new "R19 — vc64" se
   camera cadence. Filter state resets on session start, orientation/calibration change, control-
   hand discontinuity, and tracking loss. Raw landmark-8 telemetry stays available separately from
   the filtered cursor for debugging.
-- **Automated verification:** unit tests (279+ last count), lint, debug APK assembly, and a set of
-  hard-invariant checks all run in `ci.yml` on every push (see README for the invariant list).
-- **Device verification:** not current. Every APK produced so far has been marked "device test
-  required" — there is no recent confirmed pass on real hardware for camera FPS, pointer latency,
-  jitter, or false-click rate at the current filter tuning.
+- **Automated verification:** unit tests (279+ last count), lint, debug APK assembly, and hard
+  invariant checks are defined in `ci.yml`.
+- **Signing security:** the previously tracked `aergis-release.jks` has been removed from `main`.
+  `.gitignore` already blocks `*.jks` and `keystore.properties`, and CI now fails if signing
+  material is ever tracked again. The old keystore remains compromised in repository history and
+  must be rotated before any trusted release is distributed; historical removal requires an
+  approved secret-removal/history-rewrite process.
+- **Device verification:** not current. There is no recent confirmed pass on real hardware for
+  camera FPS, pointer latency, jitter, or false-click rate at the current filter tuning.
 
 ## Known open engineering issue
 
@@ -47,9 +51,6 @@ available and worth the trade-off.
 - A handful of user-facing strings inside `ProductionActivity.kt` and `MainActivity.kt` still say
   "AERMOTUS" — irrelevant if those files get deleted per the point above; otherwise rename them
   for consistency.
-- Move the keystore password (currently the literal `"android"`) into a gitignored
-  `keystore.properties` file or a CI secret before this repo is ever made public, even though it's
-  only a preview-signing cert with no production trust behind it.
 - `AermotusVisuals.kt`, `AirModels.kt`, and other filenames still carry the old `AERMOTUS`/`Air`
   naming even though behavior and app identity have moved to Aergis. Renaming files is safe but
   touch-heavy (imports everywhere) — worth doing once, deliberately, not as a side effect of an
@@ -57,12 +58,11 @@ available and worth the trade-off.
 
 ## Immediate next action
 
-1. CI recovery (in progress): AGP was pinned to 9.3.1 (compatible with Kotlin 2.4.20).
-   The remaining failure is the AGP 9.x built-in Kotlin conflict — remove the explicit
-   `org.jetbrains.kotlin.android` plugin from both the root and `app` build files while
-   keeping `org.jetbrains.kotlin.plugin.compose`. After that change, re-run `ci.yml`.
-2. Once CI is green, install the resulting debug APK on a real device and measure
-   camera → MediaPipe result FPS, pointer latency, jitter, and false-click rate.
-   Nothing in this file should be trusted as “working” until that happens.
-3. Only after device data exists: pick one item from the cleanup backlog or the
-   camera-FPS investigation and do it as its own isolated change with its own CI run.
+1. Validate the current `main` revision through GitHub Actions. The repository currently reports
+   no workflow runs, so there is not yet CI evidence for this revision.
+2. Once CI is green, install the resulting debug APK on a real device and measure camera →
+   MediaPipe result FPS, pointer latency, jitter, and false-click rate.
+3. Investigate the observed 8–12 FPS MediaPipe cadence as a separate performance change, using
+   measured camera/submission/result rates before changing pointer-filter constants.
+4. Rotate the compromised preview signing key and perform an approved historical secret-removal
+   process before treating any future release signing identity as trusted.
