@@ -22,7 +22,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    sourceSets.getByName("main").res.srcDir(generatedFontResDir.get().asFile)
+    sourceSets.getByName("main").res.srcDirs = sourceSets.getByName("main").res.srcDirs + generatedFontResDir.get().asFile
 
     signingConfigs {
         create("release") {
