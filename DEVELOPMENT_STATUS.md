@@ -24,11 +24,11 @@ edit it in place as you make real progress, don't append a new "R19 — vc64" se
   the filtered cursor for debugging.
 - **Automated verification:** unit tests (279+ last count), lint, debug APK assembly, and hard
   invariant checks are defined in `ci.yml`.
-- **Signing security:** the previously tracked `aergis-release.jks` has been removed from `main`.
-  `.gitignore` already blocks `*.jks` and `keystore.properties`, and CI now fails if signing
-  material is ever tracked again. The old keystore remains compromised in repository history and
-  must be rotated before any trusted release is distributed; historical removal requires an
-  approved secret-removal/history-rewrite process.
+- **Signing security:** both tracked preview keystores discovered by CI (`aergis-release.jks` and
+  `keystore/airgesture-preview.jks`) have now been removed from `main`. `.gitignore` blocks `*.jks`
+  and `keystore.properties`, and CI fails if signing material is ever tracked again. Both old
+  keys remain compromised in repository history and must be rotated before any trusted release is
+  distributed; historical removal requires an approved secret-removal/history-rewrite process.
 - **Device verification:** not current. There is no recent confirmed pass on real hardware for
   camera FPS, pointer latency, jitter, or false-click rate at the current filter tuning.
 
@@ -58,11 +58,12 @@ available and worth the trade-off.
 
 ## Immediate next action
 
-1. Validate the current `main` revision through GitHub Actions. The repository currently reports
-   no workflow runs, so there is not yet CI evidence for this revision.
+1. Validate the current `main` revision through GitHub Actions. Run #1 correctly exposed the second
+   tracked preview keystore; it has now been removed and run #2 is queued against the corrected
+   tree.
 2. Once CI is green, install the resulting debug APK on a real device and measure camera →
    MediaPipe result FPS, pointer latency, jitter, and false-click rate.
 3. Investigate the observed 8–12 FPS MediaPipe cadence as a separate performance change, using
    measured camera/submission/result rates before changing pointer-filter constants.
-4. Rotate the compromised preview signing key and perform an approved historical secret-removal
-   process before treating any future release signing identity as trusted.
+4. Rotate both compromised preview signing identities and perform an approved historical
+   secret-removal process before treating any future release signing identity as trusted.
